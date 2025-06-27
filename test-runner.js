@@ -36,8 +36,14 @@ async function testUrl(page, url, errorWhitelist = { consoleErrors: [], networkE
   const consoleErrors = [];
   const networkErrors = [];
   const seenConsoleErrors = new Set();
+  const seenNetworkErrors = new Set();
   
-  page.on('console', msg => {
+  // Remove any existing listeners to prevent accumulation
+  page.removeAllListeners('console');
+  page.removeAllListeners('response');
+  page.removeAllListeners('requestfailed');
+  
+  const consoleHandler = (msg) => {
     if (msg.type() === 'error') {
       const errorText = msg.text();
       if (!isErrorWhitelisted(errorText, errorWhitelist.consoleErrors) && !seenConsoleErrors.has(errorText)) {
@@ -48,12 +54,14 @@ async function testUrl(page, url, errorWhitelist = { consoleErrors: [], networkE
         });
       }
     }
-  });
+  };
   
-  page.on('response', response => {
+  const responseHandler = (response) => {
     if (!response.ok()) {
       const responseUrl = response.url();
-      if (!isErrorWhitelisted(responseUrl, errorWhitelist.networkErrors)) {
+      const errorKey = `${response.status()}-${responseUrl}`;
+      if (!isErrorWhitelisted(responseUrl, errorWhitelist.networkErrors) && !seenNetworkErrors.has(errorKey)) {
+        seenNetworkErrors.add(errorKey);
         networkErrors.push({
           url: responseUrl,
           status: response.status(),
@@ -61,19 +69,25 @@ async function testUrl(page, url, errorWhitelist = { consoleErrors: [], networkE
         });
       }
     }
-  });
+  };
 
-  page.on('requestfailed', request => {
+  const requestFailedHandler = (request) => {
     const failedUrl = request.url();
     const failure = request.failure();
-    if (!isErrorWhitelisted(failedUrl, errorWhitelist.networkErrors)) {
+    const errorKey = `FAILED-${failedUrl}`;
+    if (!isErrorWhitelisted(failedUrl, errorWhitelist.networkErrors) && !seenNetworkErrors.has(errorKey)) {
+      seenNetworkErrors.add(errorKey);
       networkErrors.push({
         url: failedUrl,
         status: 'FAILED',
         statusText: failure ? failure.errorText : 'Request failed'
       });
     }
-  });
+  };
+  
+  page.on('console', consoleHandler);
+  page.on('response', responseHandler);
+  page.on('requestfailed', requestFailedHandler);
   
   try {
     const startTime = Date.now();
