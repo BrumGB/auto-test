@@ -13,6 +13,25 @@ function isErrorWhitelisted(errorText, whitelist) {
   );
 }
 
+async function handleCookieBanner(page) {
+  const cookieSelectors = [
+    '#onetrust-accept-btn-handler'
+  ];
+
+  for (const selector of cookieSelectors) {
+    try {
+      const element = await page.$(selector);
+      if (element && await element.isVisible()) {
+        await element.click();
+        await page.waitForTimeout(1000); // Wait for any animations
+        break;
+      }
+    } catch (error) {
+      // Continue to next selector if this one fails
+    }
+  }
+}
+
 async function testUrl(page, url, errorWhitelist = { consoleErrors: [], networkErrors: [] }) {
   const consoleErrors = [];
   const networkErrors = [];
@@ -41,10 +60,26 @@ async function testUrl(page, url, errorWhitelist = { consoleErrors: [], networkE
       }
     }
   });
+
+  page.on('requestfailed', request => {
+    const failedUrl = request.url();
+    const failure = request.failure();
+    if (!isErrorWhitelisted(failedUrl, errorWhitelist.networkErrors)) {
+      networkErrors.push({
+        url: failedUrl,
+        status: 'FAILED',
+        statusText: failure ? failure.errorText : 'Request failed'
+      });
+    }
+  });
   
   try {
     const startTime = Date.now();
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+    
+    // Try to handle cookie banners
+    await handleCookieBanner(page);
+    
     const loadTime = Date.now() - startTime;
     
     const title = await page.title();
@@ -73,6 +108,9 @@ async function testUrl(page, url, errorWhitelist = { consoleErrors: [], networkE
 async function testElementExists(page, url, selector, description) {
   try {
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+    
+    // Try to handle cookie banners
+    await handleCookieBanner(page);
     
     const element = await page.$(selector);
     const exists = element !== null;
@@ -284,4 +322,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { getRandomUrls, testUrl, testElementExists, isErrorWhitelisted };
+module.exports = { getRandomUrls, testUrl, testElementExists, isErrorWhitelisted, handleCookieBanner };
