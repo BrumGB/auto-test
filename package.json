@@ -1,0 +1,16 @@
+{
+  "name": "nonwww-tester",
+  "version": "1.0.0",
+  "description": "URL testing tool with Playwright that runs on GitHub Actions",
+  "main": "test-runner.js",
+  "scripts": {
+    "test": "node test-runner.js",
+    "start": "node test-runner.js"
+  },
+  "keywords": ["playwright", "testing", "url", "github-actions"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "playwright": "^1.40.0"
+  }
+}

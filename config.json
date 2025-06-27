@@ -1,0 +1,49 @@
+{
+  "randomUrlCount": 10,
+  "errorWhitelist": {
+    "consoleErrors": [
+      "Mixed Content",
+      "net::ERR_BLOCKED_BY_CLIENT",
+      "/nap/panel/menu"
+    ],
+    "networkErrors": [
+      "favicon.ico",
+      "robots.txt",
+      "sitemap.xml",
+      "ads",
+      "doubleclick",
+      "googlesyndication",
+      "googletagmanager",
+      "facebook.com/tr",
+      "analytics",
+      "tracking"
+    ]
+  },
+  "elementTests": [
+    {
+      "url": "https://google.com",
+      "selector": "input[name='q']",
+      "description": "Google search input"
+    },
+    {
+      "url": "https://github.com",
+      "selector": ".Header-link",
+      "description": "GitHub header navigation"
+    },
+    {
+      "url": "https://stackoverflow.com",
+      "selector": "#search",
+      "description": "Stack Overflow search box"
+    },
+    {
+      "url": "https://developer.mozilla.org",
+      "selector": ".main-page-content",
+      "description": "MDN main content area"
+    },
+    {
+      "url": "https://nodejs.org",
+      "selector": ".home-downloadbutton",
+      "description": "Node.js download button"
+    }
+  ]
+}
