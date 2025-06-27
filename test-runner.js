@@ -35,11 +35,13 @@ async function handleCookieBanner(page) {
 async function testUrl(page, url, errorWhitelist = { consoleErrors: [], networkErrors: [] }) {
   const consoleErrors = [];
   const networkErrors = [];
+  const seenConsoleErrors = new Set();
   
   page.on('console', msg => {
     if (msg.type() === 'error') {
       const errorText = msg.text();
-      if (!isErrorWhitelisted(errorText, errorWhitelist.consoleErrors)) {
+      if (!isErrorWhitelisted(errorText, errorWhitelist.consoleErrors) && !seenConsoleErrors.has(errorText)) {
+        seenConsoleErrors.add(errorText);
         consoleErrors.push({
           text: errorText,
           location: msg.location()
