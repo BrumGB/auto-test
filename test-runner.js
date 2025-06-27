@@ -7,7 +7,7 @@ function getRandomUrls(urls, count) {
   return shuffled.slice(0, count);
 }
 
-function isErrorWhitelisted(errorText, ) {
+function isErrorWhitelisted(errorText, whitelist) {
   return whitelist.some(pattern => 
     errorText.toLowerCase().includes(pattern.toLowerCase())
   );
