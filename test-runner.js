@@ -35,6 +35,7 @@ async function handleCookieBanner(page) {
 async function testUrl(page, url, errorWhitelist = { consoleErrors: [], networkErrors: [] }) {
   const consoleErrors = [];
   const networkErrors = [];
+  const redirects = [];
   const seenConsoleErrors = new Set();
   const seenNetworkErrors = new Set();
   
@@ -57,14 +58,26 @@ async function testUrl(page, url, errorWhitelist = { consoleErrors: [], networkE
   };
   
   const responseHandler = (response) => {
+    const status = response.status();
+    const responseUrl = response.url();
+    
+    // Track redirects (3xx status codes)
+    if (status >= 300 && status < 400) {
+      redirects.push({
+        from: response.request().url(),
+        to: responseUrl,
+        status: status,
+        statusText: response.statusText()
+      });
+    }
+    
     if (!response.ok()) {
-      const responseUrl = response.url();
-      const errorKey = `${response.status()}-${responseUrl}`;
+      const errorKey = `${status}-${responseUrl}`;
       if (!isErrorWhitelisted(responseUrl, errorWhitelist.networkErrors) && !seenNetworkErrors.has(errorKey)) {
         seenNetworkErrors.add(errorKey);
         networkErrors.push({
           url: responseUrl,
-          status: response.status(),
+          status: status,
           statusText: response.statusText()
         });
       }
@@ -107,6 +120,8 @@ async function testUrl(page, url, errorWhitelist = { consoleErrors: [], networkE
       loadTime,
       consoleErrors,
       networkErrors,
+      redirects,
+      finalUrl: page.url(),
       timestamp: new Date().toISOString()
     };
   } catch (error) {
@@ -116,6 +131,8 @@ async function testUrl(page, url, errorWhitelist = { consoleErrors: [], networkE
       error: error.message,
       consoleErrors,
       networkErrors,
+      redirects,
+      finalUrl: url,
       timestamp: new Date().toISOString()
     };
   }
@@ -208,6 +225,10 @@ async function generateHtmlReport(randomUrlResults, elementTestResults) {
                 <div class="stat-label">Console Errors</div>
             </div>
             <div class="stat-card">
+                <div class="stat-number">${randomUrlResults.reduce((sum, r) => sum + (r.redirects?.length || 0), 0)}</div>
+                <div class="stat-label">Redirects</div>
+            </div>
+            <div class="stat-card">
                 <div class="stat-number">${elementTestResults.filter(r => r.exists).length}/${elementTestResults.length}</div>
                 <div class="stat-label">Elements Found</div>
             </div>
@@ -220,9 +241,18 @@ async function generateHtmlReport(randomUrlResults, elementTestResults) {
                 ${result.success ? `
                     <div>✅ Loaded successfully in <span class="load-time">${result.loadTime}ms</span></div>
                     <div>Title: ${result.title}</div>
+                    ${result.finalUrl !== result.url ? `<div>🔄 Final URL: ${result.finalUrl}</div>` : ''}
                 ` : `
                     <div>❌ Failed to load: ${result.error}</div>
                 `}
+                ${result.redirects && result.redirects.length > 0 ? `
+                    <div class="error-list">
+                        <strong>Redirects:</strong>
+                        ${result.redirects.map(redirect => `
+                            <div class="error-item">🔄 ${redirect.status} ${redirect.statusText}: ${redirect.from} → ${redirect.to}</div>
+                        `).join('')}
+                    </div>
+                ` : ''}
                 ${result.consoleErrors && result.consoleErrors.length > 0 ? `
                     <div class="error-list">
                         <strong>Console Errors:</strong>
@@ -272,6 +302,100 @@ async function generateHtmlReport(randomUrlResults, elementTestResults) {
   return html;
 }
 
+async function generateIndexPage() {
+  try {
+    const files = await fs.readdir('reports');
+    const reportFiles = files
+      .filter(file => file.startsWith('report-') && file.endsWith('.html'))
+      .map(file => {
+        const timestampStr = file.replace('report-', '').replace('.html', '');
+        const timestamp = new Date(timestampStr.replace(/-/g, ':').replace(/T/, 'T').slice(0, -3) + ':' + timestampStr.slice(-2));
+        return {
+          filename: file,
+          timestamp: timestamp,
+          timestampStr: timestampStr,
+          displayDate: timestamp.toLocaleString()
+        };
+      })
+      .sort((a, b) => b.timestamp - a.timestamp); // Sort newest first
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Testing Reports - Index</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; margin-bottom: 30px; }
+        .report-list { display: grid; gap: 15px; }
+        .report-item { 
+            background: #f8f9fa; 
+            border: 1px solid #dee2e6; 
+            border-radius: 6px; 
+            padding: 15px; 
+            transition: background-color 0.2s;
+        }
+        .report-item:hover { background: #e9ecef; }
+        .report-link { 
+            text-decoration: none; 
+            color: #007bff; 
+            font-weight: bold; 
+            font-size: 1.1em;
+        }
+        .report-link:hover { text-decoration: underline; }
+        .report-date { color: #666; margin-top: 5px; }
+        .current-report { background: #d4edda; border-color: #c3e6cb; }
+        .current-badge { 
+            background: #28a745; 
+            color: white; 
+            padding: 2px 8px; 
+            border-radius: 12px; 
+            font-size: 0.8em; 
+            margin-left: 10px;
+        }
+        .no-reports { text-align: center; color: #666; padding: 40px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 URL Testing Reports</h1>
+        
+        ${reportFiles.length > 0 ? `
+            <div class="report-list">
+                ${reportFiles.map((report, index) => `
+                    <div class="report-item ${index === 0 ? 'current-report' : ''}">
+                        <a href="${report.filename}" class="report-link">
+                            Report - ${report.displayDate}
+                            ${index === 0 ? '<span class="current-badge">Latest</span>' : ''}
+                        </a>
+                        <div class="report-date">Generated: ${report.displayDate}</div>
+                    </div>
+                `).join('')}
+            </div>
+        ` : `
+            <div class="no-reports">
+                <p>No reports found. Run the test suite to generate your first report!</p>
+            </div>
+        `}
+        
+        <div style="margin-top: 30px; text-align: center; color: #666; font-size: 0.9em;">
+            <p>Reports are automatically generated each time the test suite runs.</p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    return html;
+  } catch (error) {
+    console.warn('Warning: Could not generate index page:', error.message);
+    return `<!DOCTYPE html>
+<html><head><title>Reports Index</title></head>
+<body><h1>Reports Index</h1><p>Error loading reports list.</p></body></html>`;
+  }
+}
+
 async function main() {
   try {
     const urlsData = JSON.parse(await fs.readFile('urls.json', 'utf8'));
@@ -305,28 +429,44 @@ async function main() {
     
     await fs.mkdir('reports', { recursive: true });
     
+    const timestamp = new Date();
+    const timestampStr = timestamp.toISOString().replace(/[:.]/g, '-').slice(0, -5); // Format: 2024-06-28T12-30-45
+    
     const jsonReport = {
-      timestamp: new Date().toISOString(),
+      timestamp: timestamp.toISOString(),
       randomUrlResults,
       elementTestResults,
       summary: {
         totalRandomUrls: randomUrlResults.length,
         successfulLoads: randomUrlResults.filter(r => r.success).length,
         totalConsoleErrors: randomUrlResults.reduce((sum, r) => sum + (r.consoleErrors?.length || 0), 0),
+        totalRedirects: randomUrlResults.reduce((sum, r) => sum + (r.redirects?.length || 0), 0),
         elementsFound: elementTestResults.filter(r => r.exists).length,
         totalElementTests: elementTestResults.length
       }
     };
     
-    await fs.writeFile('reports/results.json', JSON.stringify(jsonReport, null, 2));
+    // Write timestamped files
+    await fs.writeFile(`reports/results-${timestampStr}.json`, JSON.stringify(jsonReport, null, 2));
     
     const htmlReport = await generateHtmlReport(randomUrlResults, elementTestResults);
-    await fs.writeFile('reports/index.html', htmlReport);
+    await fs.writeFile(`reports/report-${timestampStr}.html`, htmlReport);
+    
+    // Generate index page listing all reports
+    const indexPage = await generateIndexPage();
+    await fs.writeFile('reports/index.html', indexPage);
+    
+    // Also write current files for easy access
+    await fs.writeFile('reports/results.json', JSON.stringify(jsonReport, null, 2));
+    await fs.writeFile('reports/latest.html', htmlReport);
     
     console.log('✅ Testing complete! Reports generated in ./reports/');
     console.log(`📊 Summary: ${jsonReport.summary.successfulLoads}/${jsonReport.summary.totalRandomUrls} URLs loaded successfully`);
     console.log(`🔍 Elements: ${jsonReport.summary.elementsFound}/${jsonReport.summary.totalElementTests} elements found`);
     console.log(`⚠️  Console errors: ${jsonReport.summary.totalConsoleErrors}`);
+    console.log(`🔄 Redirects: ${jsonReport.summary.totalRedirects}`);
+    console.log(`📄 Timestamped report: report-${timestampStr}.html`);
+    console.log(`📋 Index page: index.html (lists all reports by date)`);
     
   } catch (error) {
     console.error('❌ Error running tests:', error);
