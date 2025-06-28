@@ -309,7 +309,9 @@ async function generateIndexPage() {
       .filter(file => file.startsWith('report-') && file.endsWith('.html'))
       .map(file => {
         const timestampStr = file.replace('report-', '').replace('.html', '');
-        const timestamp = new Date(timestampStr.replace(/-/g, ':').replace(/T/, 'T').slice(0, -3) + ':' + timestampStr.slice(-2));
+        // Convert format from "2024-06-28T12-30-45" to "2024-06-28T12:30:45"
+        const isoString = timestampStr.replace(/-(\d{2})-(\d{2})$/, ':$1:$2');
+        const timestamp = new Date(isoString);
         return {
           filename: file,
           timestamp: timestamp,
